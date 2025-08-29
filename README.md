@@ -1,5 +1,3 @@
-# itasca-flac3d-reporting
-
 # FLAC3D Slice Export → Word Report
 
 This repository provides a two-step workflow to automate the generation of Word reports from FLAC3D slice outputs. The first script (`data-export-automated.py`) is designed to run inside the FLAC3D Python Console and exports bitmap slice images for displacement magnitude, maximum principal effective stress, minimum principal effective stress, and zone state. 
