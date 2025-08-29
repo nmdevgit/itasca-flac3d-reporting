@@ -1,0 +1,170 @@
+## To be executed in FLAC3D Python Console
+
+import itasca as it
+import os
+
+# Create necessary directories
+base_dir = "./exports"
+dirs = {
+    "disp_x": os.path.join(base_dir, "displacements", "xslice"),
+    "disp_y": os.path.join(base_dir, "displacements", "yslice"),
+    "max_x": os.path.join(base_dir, "max_principal", "xslice"),
+    "max_y": os.path.join(base_dir, "max_principal", "yslice"),
+    "min_x": os.path.join(base_dir, "min_principal", "xslice"),
+    "min_y": os.path.join(base_dir, "min_principal", "yslice"),
+    "state_x": os.path.join(base_dir, "zone_state", "xslice"),
+    "state_y": os.path.join(base_dir, "zone_state", "yslice"),
+}
+
+for path in dirs.values():
+    os.makedirs(path, exist_ok=True)
+
+
+# --- Displacement Slices ---
+def export_displacement_slices(axis="x", start=90, end=265, step=10):
+    for i in range(start, end + 1, step):
+        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
+        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
+        dip_dir = "90" if axis == "x" else "0"
+        filename = f"{axis}_slice_disp_{i}.bmp"
+        filepath = os.path.join(dirs[f"disp_{axis}"], filename)
+
+        it.command(f'''
+            plot create "Disp {axis.upper()}-Slice @ {i}"
+            plot clear
+            plot background 'white'
+            plot outline active on width 2 color 'black'
+
+            plot item create zone active on ...
+                contour displacement component magnitude log off ...
+                ramp rainbow minimum automatic maximum automatic interval automatic ...
+                polygons fill on outline active on width 1 color 'black' ...
+                cut active on type plane ...
+                    surface on front off back off ...
+                    origin {origin} normal {normal}
+
+            plot view projection parallel
+            plot view reset
+            plot view dip 90
+            plot view dip-direction {dip_dir}
+            plot view roll 0
+
+            plot export bitmap filename="{filepath}" dpi=300
+        ''')
+
+
+# --- Max Principal Effective Stress ---
+def export_max_principal_slices(axis="x", start=90, end=265, step=10):
+    for i in range(start, end + 1, step):
+        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
+        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
+        dip_dir = "90" if axis == "x" else "0"
+        filename = f"{axis}_slice_max_principal_{i}.bmp"
+        filepath = os.path.join(dirs[f"max_{axis}"], filename)
+
+        it.command(f'''
+            plot create "MaxEffStress_{axis.upper()}{i}"
+            plot clear
+            plot active on
+            plot target active on
+            plot background 'white'
+            plot outline active on width 2 color 'black'
+
+            plot item create zone active on ...
+                contour stress-effective quantity maximum log off ...
+                method average ...
+                ramp rainbow minimum automatic maximum automatic interval automatic ...
+                polygons fill on outline active on width 1 color 'black' ...
+                cut active on type plane ...
+                    surface on front off back off ...
+                    origin {origin} normal {normal} ...
+                null-faces-only off ...
+                hide-null mechanical on thermal off fluid off ...
+                transparency 0
+
+            plot view projection parallel
+            plot view reset
+            plot view dip 90
+            plot view dip-direction {dip_dir}
+
+            plot export bitmap filename="{filepath}" dpi=300
+        ''')
+
+
+# --- Min Principal Effective Stress ---
+def export_min_principal_slices(axis="x", start=90, end=265, step=10):
+    for i in range(start, end + 1, step):
+        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
+        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
+        dip_dir = "90" if axis == "x" else "0"
+        filename = f"{axis}_slice_min_principal_{i}.bmp"
+        filepath = os.path.join(dirs[f"min_{axis}"], filename)
+
+        it.command(f'''
+            plot create "MinEffStress_{axis.upper()}{i}"
+            plot clear
+            plot active on
+            plot target active on
+            plot background 'white'
+            plot outline active on width 2 color 'black'
+
+            plot item create zone active on ...
+                contour stress-effective quantity minimum log off ...
+                method average ...
+                ramp rainbow minimum automatic maximum automatic interval automatic ...
+                polygons fill on outline active on width 1 color 'black' ...
+                cut active on type plane ...
+                    surface on front off back off ...
+                    origin {origin} normal {normal} ...
+                null-faces-only off ...
+                hide-null mechanical on thermal off fluid off ...
+                transparency 0
+
+            plot view projection parallel
+            plot view reset
+            plot view dip 90
+            plot view dip-direction {dip_dir}
+
+            plot export bitmap filename="{filepath}" dpi=300
+        ''')
+
+
+# --- Zone State ---
+def export_zone_state_slices(axis="x", start=90, end=265, step=10):
+    for i in range(start, end + 1, step):
+        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
+        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
+        dip_dir = "90" if axis == "x" else "0"
+        filename = f"{axis}_slice_state_{i}.bmp"
+        filepath = os.path.join(dirs[f"state_{axis}"], filename)
+
+        it.command(f'''
+            plot create "ZoneState_{axis.upper()}{i}"
+            plot clear
+            plot background 'white'
+            plot outline active on width 2 color 'black'
+
+            plot item create zone active on ...
+                label State Average ...
+                polygons fill on outline active on width 1 color 'black' ...
+                cut active on type plane ...
+                    surface on front off back off ...
+                    origin {origin} normal {normal}
+
+            plot view projection parallel
+            plot view reset
+            plot view dip 90
+            plot view dip-direction {dip_dir}
+
+            plot export bitmap filename="{filepath}" dpi=300
+        ''')
+
+# 🔁 Run all exports
+export_displacement_slices("x")
+export_displacement_slices("y")
+export_max_principal_slices("x")
+export_max_principal_slices("y")
+export_min_principal_slices("x")
+export_min_principal_slices("y")
+export_zone_state_slices("x")
+export_zone_state_slices("y")
