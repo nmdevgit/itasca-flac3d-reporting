@@ -22,23 +22,20 @@ def resize_image_to_limit(filepath, max_bytes=512000, min_quality=10):
             quality -= 5
     return False
 
-# Get numeric slice value from filename for sorting
-
-
+# Extract numeric slice value from filename
 def extract_slice_number(filename):
     match = re.search(r"(\d+)", filename)
     return int(match.group(1)) if match else -1
 
 
-# Word doc generator for X or Y slices
+# Word doc generator for X, Y, or Z slices
 def generate_report(axis="x"):
     from docx.enum.section import WD_ORIENT
     from docx.shared import Inches, Pt
-    from docx.oxml.ns import qn
 
     axis = axis.lower()
-    if axis not in ["x", "y"]:
-        print("Invalid axis. Use 'x' or 'y'.")
+    if axis not in ["x", "y", "z"]:
+        print("Invalid axis. Use 'x', 'y', or 'z'.")
         return
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -63,26 +60,27 @@ def generate_report(axis="x"):
         "state": "Zone State",
     }
 
-    # exactly two per page for X; try for Y if files exist
-    keys_x = ["disp", "max"]
-    keys_y = ["disp", "max"]
-    keys_to_include = keys_x if axis == "x" else keys_y
+    # Two per page: first page disp+max, second page min+state
+    keys_page_pairs = [
+        ("disp", "max"),
+        ("min",  "state"),
+    ]
 
     doc_filename = os.path.join(script_dir, "exports", f"{axis}slice_figures.docx")
     document = Document()
 
-    # Page setup (A4 portrait, tight margins)
+    # Page setup
     section = document.sections[0]
     section.orientation = WD_ORIENT.PORTRAIT
     section.top_margin = section.bottom_margin = section.left_margin = section.right_margin = Inches(0.7)
 
-    # Tighten caption style so two figures fit
+    # Caption style
     caption = document.styles["Caption"]
     caption.font.size = Pt(9)
     caption.paragraph_format.space_before = Pt(0)
-    caption.paragraph_format.space_after  = Pt(6)  # just a little gap
+    caption.paragraph_format.space_after  = Pt(6)
 
-    # (optional) also tweak Normal if you want tighter spacing everywhere:
+    # Optional: tighten Normal spacing
     normal = document.styles["Normal"]
     normal.paragraph_format.space_before = Pt(0)
     normal.paragraph_format.space_after  = Pt(0)
@@ -98,22 +96,15 @@ def generate_report(axis="x"):
         return
 
     IMG_W = Inches(5.5)
-    IMG_H = Inches(4)  # tweak if needed; 3.0–3.4" fits well
+    IMG_H = Inches(4.0)
 
     for slice_val in slice_numbers:
         slice_str = str(slice_val)
 
-        # Two pages per slice, each with exactly two figures (if available)
-        page_pairs = [
-            ("disp", "max"),   # Page A
-            ("min",  "state"), # Page B
-        ]
-
-        for page_idx, (k1, k2) in enumerate(page_pairs, start=1):
-            # Heading per page (helps when pages get separated in review)
+        # Two pages per slice
+        for page_idx, (k1, k2) in enumerate(keys_page_pairs, start=1):
             document.add_heading(f"{axis.upper()} Slice @ {slice_str}  ({page_idx}/2)", level=1)
 
-            # Table block keeps both figures on the same page
             table = document.add_table(rows=0, cols=1)
             table.autofit = False
 
@@ -121,10 +112,10 @@ def generate_report(axis="x"):
                 bmp_name = filename_templates[key].format(slice_str)
                 bmp_path = os.path.join(folders[key], bmp_name)
                 if not os.path.exists(bmp_path):
-                    print(f"⚠️  Missing: {bmp_path}")
+                    print(f"Missing: {bmp_path}")
                     continue
 
-                # BMP → JPG (smaller + Word friendly)
+                # BMP → JPG
                 jpg_path = bmp_path.replace(".bmp", ".jpg")
                 with Image.open(bmp_path) as im:
                     im.convert("RGB").save(jpg_path, "JPEG", quality=95)
@@ -143,15 +134,13 @@ def generate_report(axis="x"):
 
                 os.remove(jpg_path)
 
-            # Page break after each page (so two pages per slice)
             document.add_page_break()
 
     document.save(doc_filename)
     print(f"\nWord document saved as: {os.path.abspath(doc_filename)}")
 
 
-
-
-# Run for both X and Y slices
+# Generate reports
 generate_report("x")
 generate_report("y")
+generate_report("z")
