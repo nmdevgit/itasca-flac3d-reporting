@@ -3,29 +3,48 @@
 import itasca as it
 import os
 
-# Create necessary directories
+# ------------------------------
+# Directories
+# ------------------------------
 base_dir = "./exports"
 dirs = {
-    "disp_x": os.path.join(base_dir, "displacements", "xslice"),
-    "disp_y": os.path.join(base_dir, "displacements", "yslice"),
-    "max_x": os.path.join(base_dir, "max_principal", "xslice"),
-    "max_y": os.path.join(base_dir, "max_principal", "yslice"),
-    "min_x": os.path.join(base_dir, "min_principal", "xslice"),
-    "min_y": os.path.join(base_dir, "min_principal", "yslice"),
-    "state_x": os.path.join(base_dir, "zone_state", "xslice"),
-    "state_y": os.path.join(base_dir, "zone_state", "yslice"),
+    "disp_x":  os.path.join(base_dir, "displacements",  "xslice"),
+    "disp_y":  os.path.join(base_dir, "displacements",  "yslice"),
+    "disp_z":  os.path.join(base_dir, "displacements",  "zslice"),
+    "max_x":   os.path.join(base_dir, "max_principal",  "xslice"),
+    "max_y":   os.path.join(base_dir, "max_principal",  "yslice"),
+    "max_z":   os.path.join(base_dir, "max_principal",  "zslice"),
+    "min_x":   os.path.join(base_dir, "min_principal",  "xslice"),
+    "min_y":   os.path.join(base_dir, "min_principal",  "yslice"),
+    "min_z":   os.path.join(base_dir, "min_principal",  "zslice"),
+    "state_x": os.path.join(base_dir, "zone_state",     "xslice"),
+    "state_y": os.path.join(base_dir, "zone_state",     "yslice"),
+    "state_z": os.path.join(base_dir, "zone_state",     "zslice"),
 }
+for p in dirs.values():
+    os.makedirs(p, exist_ok=True)
 
-for path in dirs.values():
-    os.makedirs(path, exist_ok=True)
+# ----------------------------------------------------
+# Helper: plane parameters for a given axis and value
+# ----------------------------------------------------
+def _plane_params(axis, i):
+    axis = axis.lower()
+    if axis == "x":
+        return f"({i},0,0)", "(1,0,0)", "90", "90"   # origin, normal, dip, dip_dir
+    if axis == "y":
+        return f"(0,{i},0)", "(0,1,0)", "90", "0"
+    if axis == "z":
+        # top-down view for horizontal slice
+        return f"(0,0,{i})", "(0,0,1)", "0", "0"
+    raise ValueError("axis must be 'x', 'y', or 'z'")
 
-
-# --- Displacement Slices ---
-def export_displacement_slices(axis="x", start=90, end=265, step=10):
+# ----------------------------------------------------
+# Displacement Slices
+# ----------------------------------------------------
+def export_displacement_slices(axis="x", start=90, end=265, step=5):
+    axis = axis.lower()
     for i in range(start, end + 1, step):
-        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
-        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
-        dip_dir = "90" if axis == "x" else "0"
+        origin, normal, dip, dip_dir = _plane_params(axis, i)
         filename = f"{axis}_slice_disp_{i}.bmp"
         filepath = os.path.join(dirs[f"disp_{axis}"], filename)
 
@@ -45,20 +64,20 @@ def export_displacement_slices(axis="x", start=90, end=265, step=10):
 
             plot view projection parallel
             plot view reset
-            plot view dip 90
+            plot view dip {dip}
             plot view dip-direction {dip_dir}
             plot view roll 0
 
             plot export bitmap filename="{filepath}" dpi=300
         ''')
 
-
-# --- Max Principal Effective Stress ---
-def export_max_principal_slices(axis="x", start=90, end=265, step=10):
+# ----------------------------------------------------
+# Max Principal Effective Stress
+# ----------------------------------------------------
+def export_max_principal_slices(axis="x", start=90, end=265, step=5):
+    axis = axis.lower()
     for i in range(start, end + 1, step):
-        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
-        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
-        dip_dir = "90" if axis == "x" else "0"
+        origin, normal, dip, dip_dir = _plane_params(axis, i)
         filename = f"{axis}_slice_max_principal_{i}.bmp"
         filepath = os.path.join(dirs[f"max_{axis}"], filename)
 
@@ -84,19 +103,19 @@ def export_max_principal_slices(axis="x", start=90, end=265, step=10):
 
             plot view projection parallel
             plot view reset
-            plot view dip 90
+            plot view dip {dip}
             plot view dip-direction {dip_dir}
 
             plot export bitmap filename="{filepath}" dpi=300
         ''')
 
-
-# --- Min Principal Effective Stress ---
-def export_min_principal_slices(axis="x", start=90, end=265, step=10):
+# ----------------------------------------------------
+# Min Principal Effective Stress
+# ----------------------------------------------------
+def export_min_principal_slices(axis="x", start=90, end=265, step=5):
+    axis = axis.lower()
     for i in range(start, end + 1, step):
-        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
-        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
-        dip_dir = "90" if axis == "x" else "0"
+        origin, normal, dip, dip_dir = _plane_params(axis, i)
         filename = f"{axis}_slice_min_principal_{i}.bmp"
         filepath = os.path.join(dirs[f"min_{axis}"], filename)
 
@@ -122,19 +141,19 @@ def export_min_principal_slices(axis="x", start=90, end=265, step=10):
 
             plot view projection parallel
             plot view reset
-            plot view dip 90
+            plot view dip {dip}
             plot view dip-direction {dip_dir}
 
             plot export bitmap filename="{filepath}" dpi=300
         ''')
 
-
-# --- Zone State ---
-def export_zone_state_slices(axis="x", start=90, end=265, step=10):
+# ----------------------------------------------------
+# Zone State
+# ----------------------------------------------------
+def export_zone_state_slices(axis="x", start=90, end=265, step=5):
+    axis = axis.lower()
     for i in range(start, end + 1, step):
-        origin = f"({i},0,0)" if axis == "x" else f"(0,{i},0)"
-        normal = "(1,0,0)" if axis == "x" else "(0,1,0)"
-        dip_dir = "90" if axis == "x" else "0"
+        origin, normal, dip, dip_dir = _plane_params(axis, i)
         filename = f"{axis}_slice_state_{i}.bmp"
         filepath = os.path.join(dirs[f"state_{axis}"], filename)
 
@@ -153,18 +172,23 @@ def export_zone_state_slices(axis="x", start=90, end=265, step=10):
 
             plot view projection parallel
             plot view reset
-            plot view dip 90
+            plot view dip {dip}
             plot view dip-direction {dip_dir}
 
             plot export bitmap filename="{filepath}" dpi=300
         ''')
 
-# 🔁 Run all exports
-export_displacement_slices("x")
-export_displacement_slices("y")
-export_max_principal_slices("x")
-export_max_principal_slices("y")
-export_min_principal_slices("x")
-export_min_principal_slices("y")
-export_zone_state_slices("x")
-export_zone_state_slices("y")
+# -----------------
+# Run all exports
+# -----------------
+# X and Y
+export_displacement_slices("x"); export_displacement_slices("y")
+export_max_principal_slices("x"); export_max_principal_slices("y")
+export_min_principal_slices("x"); export_min_principal_slices("y")
+export_zone_state_slices("x");    export_zone_state_slices("y")
+
+# Z (horizontal)
+export_displacement_slices("z", start=980, end=1080, step=5)
+export_max_principal_slices("z",  start=980, end=1080, step=5)
+export_min_principal_slices("z",  start=980, end=1080, step=5)
+export_zone_state_slices("z",     start=980, end=1080, step=5)
