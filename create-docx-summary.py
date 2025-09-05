@@ -1,40 +1,51 @@
 from PIL import Image
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 import io
 import os
 import re
 
 print("Generating report...")
 
-# Resize image to under 500 KB
+# ---------- helpers ----------
 def resize_image_to_limit(filepath, max_bytes=512000, min_quality=10):
     with Image.open(filepath) as img:
         quality = 95
         while quality >= min_quality:
             buffer = io.BytesIO()
             img.save(buffer, format='JPEG', quality=quality)
-            size = buffer.tell()
-            if size <= max_bytes:
+            if buffer.tell() <= max_bytes:
                 with open(filepath, 'wb') as f:
                     f.write(buffer.getvalue())
                 return True
             quality -= 5
     return False
 
-# Extract numeric slice value from filename
-def extract_slice_number(filename):
-    match = re.search(r"(\d+)", filename)
-    return int(match.group(1)) if match else -1
+def extract_slice_number_from_filename(filename):
+    # grabs the first integer in the filename
+    m = re.search(r"(\d+)", filename)
+    return int(m.group(1)) if m else None
 
+def collect_slice_numbers(folder, pattern_prefix=None):
+    """Return sorted set of slice numbers for files in 'folder' that end with .bmp.
+       Optionally ensure filenames start with pattern_prefix."""
+    nums = set()
+    if not os.path.isdir(folder):
+        return nums
+    for f in os.listdir(folder):
+        if not f.lower().endswith(".bmp"):
+            continue
+        if pattern_prefix and not f.startswith(pattern_prefix):
+            continue
+        n = extract_slice_number_from_filename(f)
+        if n is not None:
+            nums.add(n)
+    return nums
 
-# Word doc generator for X, Y, or Z slices
+# ---------- doc builder ----------
 def generate_report(axis="x"):
-    from docx.enum.section import WD_ORIENT
-    from docx.shared import Inches, Pt
-
     axis = axis.lower()
-    if axis not in ["x", "y", "z"]:
+    if axis not in ("x", "y", "z"):
         print("Invalid axis. Use 'x', 'y', or 'z'.")
         return
 
@@ -44,7 +55,8 @@ def generate_report(axis="x"):
         "disp":  os.path.join(script_dir, "exports", "displacements", f"{axis}slice"),
         "max":   os.path.join(script_dir, "exports", "max_principal", f"{axis}slice"),
         "min":   os.path.join(script_dir, "exports", "min_principal", f"{axis}slice"),
-        "state": os.path.join(script_dir, "exports", "zone_state", f"{axis}slice"),
+        "state": os.path.join(script_dir, "exports", "zone_state",    f"{axis}slice"),
+        "zz":    os.path.join(script_dir, "exports", "zz_stress",     f"{axis}slice"),  # NEW
     }
 
     filename_templates = {
@@ -52,95 +64,104 @@ def generate_report(axis="x"):
         "max":   f"{axis}_slice_max_principal_{{}}.bmp",
         "min":   f"{axis}_slice_min_principal_{{}}.bmp",
         "state": f"{axis}_slice_state_{{}}.bmp",
+        "zz":    f"{axis}_slice_zz_{{}}.bmp",  # NEW
     }
+
     labels = {
         "disp":  "Displacement Magnitude",
         "max":   "Max Principal Effective Stress",
         "min":   "Min Principal Effective Stress",
         "state": "Zone State",
+        "zz":    "σzz Effective Stress",
     }
 
-    # Two per page: first page disp+max, second page min+state
-    keys_page_pairs = [
+    # Page layout: two per page, then zz on its own page
+    pages = [
         ("disp", "max"),
         ("min",  "state"),
+        ("zz",),
     ]
 
-    doc_filename = os.path.join(script_dir, "exports", f"{axis}slice_figures.docx")
-    document = Document()
+    # Collect slice numbers PER KEY, then take union so we don’t assume all keys share the same set
+    # Optionally guard with a prefix to reduce false matches
+    per_key_numbers = {
+        k: collect_slice_numbers(folders[k])
+        for k in folders
+    }
+    all_slice_numbers = sorted(set().union(*per_key_numbers.values()))
+    if not all_slice_numbers:
+        print("No slice images found for any key; nothing to write.")
+        return
 
-    # Page setup
+    # Build the doc
+    document = Document()
     section = document.sections[0]
-    section.orientation = WD_ORIENT.PORTRAIT
     section.top_margin = section.bottom_margin = section.left_margin = section.right_margin = Inches(0.7)
 
-    # Caption style
-    caption = document.styles["Caption"]
-    caption.font.size = Pt(9)
-    caption.paragraph_format.space_before = Pt(0)
-    caption.paragraph_format.space_after  = Pt(6)
+    # Slim captions
+    if "Caption" in document.styles:
+        cap = document.styles["Caption"]
+        cap.font.size = Pt(9)
+        cap.paragraph_format.space_before = Pt(0)
+        cap.paragraph_format.space_after = Pt(6)
 
-    # Optional: tighten Normal spacing
-    normal = document.styles["Normal"]
-    normal.paragraph_format.space_before = Pt(0)
-    normal.paragraph_format.space_after  = Pt(0)
-
-    # Collect slice numbers from displacement folder
-    if not os.path.exists(folders["disp"]):
-        print(f"Missing folder: {folders['disp']}")
-        return
-    slice_files = [f for f in os.listdir(folders["disp"]) if f.lower().endswith(".bmp")]
-    slice_numbers = sorted([extract_slice_number(f) for f in slice_files if extract_slice_number(f) >= 0])
-    if not slice_numbers:
-        print("No valid BMP slice files found.")
-        return
+    if "Normal" in document.styles:
+        normal = document.styles["Normal"]
+        normal.paragraph_format.space_before = Pt(0)
+        normal.paragraph_format.space_after = Pt(0)
 
     IMG_W = Inches(5.5)
     IMG_H = Inches(4.0)
 
-    for slice_val in slice_numbers:
+    total_pages = len(pages)
+
+    for slice_val in all_slice_numbers:
         slice_str = str(slice_val)
 
-        # Two pages per slice
-        for page_idx, (k1, k2) in enumerate(keys_page_pairs, start=1):
-            document.add_heading(f"{axis.upper()} Slice @ {slice_str}  ({page_idx}/2)", level=1)
+        for page_idx, keys in enumerate(pages, start=1):
+            # Check if at least one image exists for this page/slice; skip page if not
+            existing = []
+            for key in keys:
+                bmp_name = filename_templates[key].format(slice_str)
+                bmp_path = os.path.join(folders[key], bmp_name)
+                if os.path.exists(bmp_path):
+                    existing.append((key, bmp_path))
+
+            if not existing:
+                # nothing to show for this page for this slice; skip
+                continue
+
+            document.add_heading(f"{axis.upper()} Slice @ {slice_str}  ({page_idx}/{total_pages})", level=1)
 
             table = document.add_table(rows=0, cols=1)
             table.autofit = False
 
-            for key in (k1, k2):
-                bmp_name = filename_templates[key].format(slice_str)
-                bmp_path = os.path.join(folders[key], bmp_name)
-                if not os.path.exists(bmp_path):
-                    print(f"Missing: {bmp_path}")
-                    continue
-
-                # BMP → JPG
+            for key, bmp_path in existing:
+                # Convert BMP -> JPG (to shrink doc) then insert
                 jpg_path = bmp_path.replace(".bmp", ".jpg")
                 with Image.open(bmp_path) as im:
                     im.convert("RGB").save(jpg_path, "JPEG", quality=95)
                 resize_image_to_limit(jpg_path)
 
-                # Image row
                 row_img = table.add_row().cells[0]
-                p = row_img.paragraphs[0]
-                run = p.add_run()
+                run = row_img.paragraphs[0].add_run()
                 run.add_picture(jpg_path, width=IMG_W, height=IMG_H)
 
-                # Caption row
                 row_cap = table.add_row().cells[0]
                 row_cap.text = f"{labels[key]} – Slice {slice_str}"
-                row_cap.paragraphs[0].style = "Caption"
+                if "Caption" in document.styles:
+                    row_cap.paragraphs[0].style = "Caption"
 
                 os.remove(jpg_path)
 
             document.add_page_break()
 
-    document.save(doc_filename)
-    print(f"\nWord document saved as: {os.path.abspath(doc_filename)}")
+    out_doc = os.path.join(script_dir, "exports", f"{axis}slice_figures.docx")
+    document.save(out_doc)
+    print(f"Word document saved as: {os.path.abspath(out_doc)}")
 
 
-# Generate reports
+# Generate
 generate_report("x")
 generate_report("y")
 generate_report("z")
