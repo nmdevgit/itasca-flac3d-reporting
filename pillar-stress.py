@@ -1,40 +1,86 @@
 # ---------------------------------------------
-# zz_slice_topview.py  (run in FLAC3D Python console)
-# Export a top-down cut-plane view of Zone ZZ Effective Stress at z.
+# zz_slice_topview_batch.py   (run in FLAC3D Python console)
+# Export top-down cut-plane views of Zone ZZ Effective Stress at multiple RLs.
 # ---------------------------------------------
 import itasca as it
 import os
+from math import isfinite
+
+# =========================================================
+# ============== USER CONFIG – EDIT THIS BLOCK ============
+# Where do you want the files?
+OUT_DIR = "./exports/zz_stress/topview"
+DPI     = 300
+EXPORT_DAT = False          # set True to also export *.dat for each image
+
+# >>> PASTE YOUR RL / Z VALUES HERE (millimetres or metres as per your model) <<<
+# You can separate by commas or keep as a Python list—both work.
+RL_VALUES = """
+987.34, 1002.54, 1012.34, 1019.49,
+1023.315, 1025.34, 1034.72, 1044.415,
+1053.81, 1062.27, 1072.3, 1075.245
+"""
+
+# Contour scaling for σzz (effective) [Pa]
+# cmin: lower bound (more compressive if negative); cmax: upper bound (usually 0 for effective σzz at crown);
+# interval: spacing between contour ticks. As a rule of thumb:
+#   - Choose cmin so the lowest colors appear where you expect peak compression.
+#   - Keep cmax at 0.0 for σzz if you only want compressive (negative) to 0.
+#   - Set interval to 1/2–1/4 of |cmin| to get ~4–8 bands (e.g., cmin=-1.5e6 → interval≈0.75e6).
+CMIN = -3e6
+CMAX =  0.0
+INTERVAL = 1.5e6
+# ============ END USER CONFIG – STOP EDITING =============
+# =========================================================
+
+
+def _parse_rl_values(maybe_text_or_list):
+    """Accept a list OR a comma/space separated string and return a clean list of floats."""
+    if isinstance(maybe_text_or_list, str):
+        raw = maybe_text_or_list.replace("\n", " ").split(",")
+        vals = []
+        for chunk in raw:
+            for t in chunk.split():
+                try:
+                    vals.append(float(t))
+                except ValueError:
+                    pass
+        return vals
+    # already a list/tuple
+    return [float(v) for v in maybe_text_or_list]
+
 
 def export_zz_top(z_value,
-                  out_dir="./exports/zz_stress/topview",
+                  out_dir=OUT_DIR,
                   out_name=None,
-                  cmin=-3.0e6, cmax=0.0,
-                  interval=1.5e6,
-                  dpi=300,
-                  export_dat=False):
+                  cmin=CMIN, cmax=CMAX,
+                  interval=INTERVAL,
+                  dpi=DPI,
+                  export_dat=EXPORT_DAT):
     """
-    Export a top-down view of effective σzz on a horizontal cut plane.
+    Export a top-down view of effective σzz on a horizontal cut plane at z_value.
 
     Parameters
     ----------
-    z_value : float
-        Elevation (z-coordinate) of the cut plane.
-    out_dir : str
-        Directory where the export will be saved.
-    out_name : str or None
-        Output filename for the PNG (auto-named if None).
-    cmin, cmax : float
-        Contour scale minimum and maximum.
-    interval : float
-        Contour interval between ticks.
-    dpi : int
-        Resolution for the exported bitmap.
-    export_dat : bool
-        If True, also export a reloadable plot-data (.dat) file.
+    z_value : float      Elevation (z-coordinate) of the cut plane.
+    out_dir : str        Directory for export.
+    out_name : str|None  Optional filename; if None, uses 'zz_effective_topview_z{int(z)}.png'
+    cmin, cmax : float   Contour min/max. Keep cmax=0.0 for compressive-only effective σzz.
+    interval : float     Distance between contour ticks (choose ~1/2–1/4 of |cmin|).
+    dpi : int            Export resolution.
+    export_dat : bool    Also export plot data (*.dat) if True.
     """
+    # Basic sanity
+    if not (isfinite(cmin) and isfinite(cmax) and isfinite(interval) and interval > 0):
+        raise ValueError("cmin/cmax/interval must be finite; interval > 0.")
+    if cmin >= cmax:
+        raise ValueError("CMIN must be < CMAX (e.g., -1.5e6 < 0.0).")
+
     os.makedirs(out_dir, exist_ok=True)
     if out_name is None:
+        # keep original style: integer-rounded Z in the name
         out_name = f"zz_effective_topview_z{int(round(z_value))}.png"
+
     outfile_png = os.path.join(out_dir, out_name).replace("\\", "/")
     outfile_dat = outfile_png.rsplit(".", 1)[0] + ".dat"
 
@@ -101,10 +147,22 @@ def export_zz_top(z_value,
     if export_dat:
         it.command(f'plot export data filename "{outfile_dat}"')
 
-    print(f"Exported σzz top-view slice at z={z_value}: {outfile_png}")
+    print(f"[OK] Exported σzz top-view slice @ z = {z_value:.3f}  →  {outfile_png}")
     if export_dat:
-        print(f"Also exported plot data: {outfile_dat}")
+        print(f"     ↳ also exported data: {outfile_dat}")
 
 
-export_zz_top(1035.0)                  # PNG only
-# export_zz_top(1035.0, export_dat=True) # PNG + .dat
+# -----------------------------
+# Batch run
+# -----------------------------
+def run_batch():
+    rl_list = _parse_rl_values(RL_VALUES)
+    if not rl_list:
+        raise RuntimeError("No RL values found. Edit RL_VALUES in the CONFIG block.")
+    print(f"Exporting {len(rl_list)} slices to: {OUT_DIR}")
+    print(f"Contour range = [{CMIN:g}, {CMAX:g}], interval = {INTERVAL:g}, dpi = {DPI}")
+    for z in rl_list:
+        export_zz_top(z)
+
+# kick off
+run_batch()
