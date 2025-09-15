@@ -165,3 +165,5 @@ def generate_report(axis="x"):
 generate_report("x")
 generate_report("y")
 generate_report("z")
+
+# XX
